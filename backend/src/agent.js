@@ -1,5 +1,5 @@
 const { StateGraph, START, END } = require("@langchain/langgraph");
-
+const { generateInvestigationSummary } = require("./llm");
 const { searchDocuments } = require("./search");
 
 const InvestigationState = {
@@ -144,30 +144,24 @@ async function analyzeNode(state) {
 
 async function reportNode(state) {
   const hasEvidence = state.evidence.length > 0;
+
   const hasRootCause = state.findings.some(
     (f) => f.type === "root_cause"
   );
+
   const hasHistorical = state.findings.some(
     (f) => f.type === "historical_pattern"
   );
 
-  let summary;
-
-  if (!hasEvidence) {
-    summary =
-      "Insufficient evidence to determine the cause of the incident.";
-  } else if (hasRootCause) {
-    summary =
-      "The incident was linked to a deployment that introduced an additional customer-profile lookup, causing database connection contention and increased latency.";
-  } else {
-    summary =
-      "Evidence was found, but the available documents do not establish a complete root cause.";
-  }
+  const reportSummary = await generateInvestigationSummary({
+    evidence: state.evidence,
+    findings: state.findings,
+  });
 
   return {
     finalReport: {
       question: state.question,
-      summary,
+      summary: reportSummary,
       findings: state.findings,
       evidence: state.evidence.map((doc) => ({
         documentId: doc.id,
@@ -177,7 +171,11 @@ async function reportNode(state) {
       })),
       contradictions: state.contradictions || [],
       historicalIncidentFound: hasHistorical,
-      confidence: hasRootCause ? "high" : hasEvidence ? "medium" : "low",
+      confidence: hasRootCause
+        ? "high"
+        : hasEvidence
+          ? "medium"
+          : "low",
     },
   };
 }
