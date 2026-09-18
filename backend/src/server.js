@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const { runInvestigation } = require("./agent");
 const { investigate } = require("./investigation");
 const prisma = require("./db");
 
@@ -42,9 +43,9 @@ app.post("/api/investigate", async (req, res) => {
       });
     }
 
-    const result = await investigate(question);
+    const result = await runInvestigation(question);
 
-    res.json(result);
+    res.json(result.finalReport);
   } catch (error) {
     console.error(error);
 
