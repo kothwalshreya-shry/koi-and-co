@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect,useRef, useState } from "react";
 import "./App.css";
 
 const initialDocuments = [
@@ -100,77 +100,105 @@ function App() {
 
   const fileInput = useRef(null);
 
-  const startInvestigation = () => {
+  useEffect(() => {
+  fetch("http://localhost:5000/api/documents")
+    .then((response) => response.json())
+    .then((data) => {
+      const formattedDocuments = data.map((doc) => ({
+        id: doc.id,
+        name: doc.title,
+        type: doc.type,
+        date: new Date(doc.date).toLocaleDateString(),
+        status: "Indexed",
+      }));
+
+      setDocuments(formattedDocuments);
+    })
+    .catch((error) => {
+      console.error("Failed to load documents:", error);
+    });
+}, []);
+
+  const startInvestigation = async () => {
   if (!question.trim() || investigating) return;
 
   setInvestigating(true);
   setResult(null);
 
-  setTimeout(() => {
-    setInvestigating(false);
+  try {
+    const response = await fetch("http://localhost:5000/api/investigate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question: question.trim(),
+      }),
+    });
 
-    const q = question.toLowerCase();
+    const data = await response.json();
 
-    if (
-      q.includes("before") ||
-      q.includes("happened before") ||
-      q.includes("same failure")
-    ) {
-      setResult({
-        type: "insufficient",
-        title: "Exact failure cannot be confirmed",
-        confidence: "LOW CONFIDENCE",
-        evidenceStatus: "Insufficient evidence",
-        evidenceCount: 2,
-        summary:
-          "Related incidents were found, but they involve different services or failure modes. There is not enough evidence to conclude that the exact same failure happened before.",
-      });
-    } else if (
-      q.includes("check first") ||
-      q.includes("troubleshoot") ||
-      q.includes("service a")
-    ) {
-      setResult({
-        type: "contradiction",
-        title: "Contradictory troubleshooting guidance",
-        confidence: "HIGH CONFIDENCE",
-        evidenceStatus: "Conflicting evidence",
-        evidenceCount: 2,
-        summary:
-          "Two troubleshooting documents give different instructions for Service A during dependency failures. The newer guidance says to check dependency health before restarting.",
-      });
-    } else {
-      setResult({
-        type: "deployment",
-        title: "Deployment correlation detected",
-        confidence: "MEDIUM CONFIDENCE",
-        evidenceStatus: "Strong evidence",
-        evidenceCount: 3,
-        summary:
-          "The Order API latency spike occurred shortly after orders-api v2.8.1 was deployed. A previous incident also involved database connection saturation. The available evidence does not establish the deployment as the root cause.",
-      });
+    if (!response.ok) {
+      throw new Error(data.message || data.error || "Investigation failed");
     }
-  }, 1800);
+
+    setResult(data);
+  } catch (error) {
+    console.error("Investigation failed:", error);
+
+    setResult({
+      type: "error",
+      title: "Investigation failed",
+      confidence: "ERROR",
+      evidenceStatus: "Unable to retrieve evidence",
+      evidenceCount: 0,
+      summary: error.message,
+    });
+  } finally {
+    setInvestigating(false);
+  }
 };
 
   const chooseSuggestion = (text) => {
     setQuestion(text);
   };
 
-  const handleFiles = (event) => {
-    const files = Array.from(event.target.files);
+  const handleFiles = async (event) => {
+  const files = Array.from(event.target.files);
 
-    const newDocs = files.map((file, index) => ({
-      id: `DOC-${documents.length + index + 1}`,
-      name: file.name,
-      type: getDocumentType(file.name),
-      date: "Just now",
-      status: "Indexed",
-    }));
+  for (const file of files) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    setDocuments((prev) => [...newDocs, ...prev]);
-    event.target.value = "";
-  };
+      const response = await fetch("http://localhost:5000/api/documents", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Upload failed");
+      }
+
+      const newDoc = {
+        id: data.id,
+        name: data.title,
+        type: data.type,
+        date: new Date(data.date).toLocaleDateString(),
+        status: "Indexed",
+      };
+
+      setDocuments((prev) => [newDoc, ...prev]);
+    } catch (error) {
+      console.error("Upload failed:", error);
+      alert(`Failed to upload ${file.name}: ${error.message}`);
+    }
+  }
+
+  event.target.value = "";
+};
 
   return (
     <div className="app">

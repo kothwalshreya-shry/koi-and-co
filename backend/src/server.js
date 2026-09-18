@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const multer = require("multer");
 const { runInvestigation } = require("./agent");
 const { investigate } = require("./investigation");
 const prisma = require("./db");
@@ -10,7 +11,9 @@ const upload = multer({
   storage: multer.memoryStorage(),
 });
 
+
 const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
@@ -54,6 +57,66 @@ app.get("/api/documents", async (req, res) => {
   }
 });
 const PORT = process.env.PORT || 5000;
+
+app.get("/api/documents", async (req, res) => {
+  try {
+    const documents = await prisma.document.findMany({
+      orderBy: {
+        date: "desc",
+      },
+    });
+
+    res.json(documents);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Failed to fetch documents",
+      message: error.message,
+    });
+  }
+});
+
+app.post("/api/documents", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: "No file uploaded",
+      });
+    }
+
+    const fileName = req.file.originalname;
+    const extension = fileName.split(".").pop().toLowerCase();
+
+    if (!["txt", "md"].includes(extension)) {
+      return res.status(400).json({
+        error: "Only .txt and .md files are supported right now",
+      });
+    }
+
+    const content = req.file.buffer.toString("utf-8");
+
+    const document = await prisma.document.create({
+      data: {
+        id: `UPLOAD-${Date.now()}`,
+        title: fileName,
+        type: extension === "md" ? "markdown" : "text",
+        date: new Date(),
+        content,
+      },
+    });
+
+    res.status(201).json(document);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Failed to upload document",
+      message: error.message,
+    });
+  }
+});
+
 app.post("/api/investigate", async (req, res) => {
   try {
     const { question } = req.body;
