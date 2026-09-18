@@ -124,17 +124,18 @@ async function analyzeNode(state) {
   }
 
   const historicalIncidents = incidents.filter(
-    (d) => !d.id.includes("0916")
-  );
+  (d) => !d.id.includes("0916")
+);
 
-  if (historicalIncidents.length > 0) {
-    findings.push({
-      type: "historical_pattern",
-      conclusion:
-        "A similar Order API latency pattern occurred previously, involving customer-profile database access.",
-      evidence: historicalIncidents.map((d) => d.id),
-    });
-  }
+if (historicalIncidents.length > 0) {
+  findings.push({
+    type: "historical_pattern",
+    match: "similar",
+    conclusion:
+      "A similar Order API latency pattern occurred previously, involving customer-profile database access, but under a different version.",
+    evidence: historicalIncidents.map((d) => d.id),
+  });
+}
  const contradictions = detectContradictions(docs);
   return {
     findings,
