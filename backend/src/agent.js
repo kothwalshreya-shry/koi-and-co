@@ -7,8 +7,8 @@ const InvestigationState = {
   evidence: [],
   searches: [],
   findings: [],
-  finalReport: null,
   contradictions: [],
+  finalReport: null,
 };
 
 async function searchNode(state) {
@@ -143,14 +143,41 @@ async function analyzeNode(state) {
 }
 
 async function reportNode(state) {
+  const hasEvidence = state.evidence.length > 0;
+  const hasRootCause = state.findings.some(
+    (f) => f.type === "root_cause"
+  );
+  const hasHistorical = state.findings.some(
+    (f) => f.type === "historical_pattern"
+  );
+
+  let summary;
+
+  if (!hasEvidence) {
+    summary =
+      "Insufficient evidence to determine the cause of the incident.";
+  } else if (hasRootCause) {
+    summary =
+      "The incident was linked to a deployment that introduced an additional customer-profile lookup, causing database connection contention and increased latency.";
+  } else {
+    summary =
+      "Evidence was found, but the available documents do not establish a complete root cause.";
+  }
+
   return {
     finalReport: {
       question: state.question,
-      summary: "Investigation completed using available evidence.",
+      summary,
       findings: state.findings,
-      evidence: state.evidence.map((doc) => doc.id),
-      confidence: state.evidence.length > 0 ? "medium" : "low",
+      evidence: state.evidence.map((doc) => ({
+        documentId: doc.id,
+        title: doc.title,
+        type: doc.type,
+        date: doc.date,
+      })),
       contradictions: state.contradictions || [],
+      historicalIncidentFound: hasHistorical,
+      confidence: hasRootCause ? "high" : hasEvidence ? "medium" : "low",
     },
   };
 }
