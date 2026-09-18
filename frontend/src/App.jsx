@@ -88,7 +88,7 @@ const timeline = [
 ];
 
 function App() {
-  const [page, setPage] = useState("investigate");
+  const [page, setPage] = useState("overview");
 
   const [question, setQuestion] = useState("");
 
@@ -101,22 +101,57 @@ function App() {
   const fileInput = useRef(null);
 
   const startInvestigation = () => {
-    if (!question.trim() || investigating) return;
+  if (!question.trim() || investigating) return;
 
-    setInvestigating(true);
-    setResult(null);
+  setInvestigating(true);
+  setResult(null);
 
-    setTimeout(() => {
-      setInvestigating(false);
+  setTimeout(() => {
+    setInvestigating(false);
 
+    const q = question.toLowerCase();
+
+    if (
+      q.includes("before") ||
+      q.includes("happened before") ||
+      q.includes("same failure")
+    ) {
       setResult({
+        type: "insufficient",
+        title: "Exact failure cannot be confirmed",
+        confidence: "LOW CONFIDENCE",
+        evidenceStatus: "Insufficient evidence",
+        evidenceCount: 2,
+        summary:
+          "Related incidents were found, but they involve different services or failure modes. There is not enough evidence to conclude that the exact same failure happened before.",
+      });
+    } else if (
+      q.includes("check first") ||
+      q.includes("troubleshoot") ||
+      q.includes("service a")
+    ) {
+      setResult({
+        type: "contradiction",
+        title: "Contradictory troubleshooting guidance",
+        confidence: "HIGH CONFIDENCE",
+        evidenceStatus: "Conflicting evidence",
+        evidenceCount: 2,
+        summary:
+          "Two troubleshooting documents give different instructions for Service A during dependency failures. The newer guidance says to check dependency health before restarting.",
+      });
+    } else {
+      setResult({
+        type: "deployment",
         title: "Deployment correlation detected",
         confidence: "MEDIUM CONFIDENCE",
+        evidenceStatus: "Strong evidence",
+        evidenceCount: 3,
         summary:
           "The Order API latency spike occurred shortly after orders-api v2.8.1 was deployed. A previous incident also involved database connection saturation. The available evidence does not establish the deployment as the root cause.",
       });
-    }, 1800);
-  };
+    }
+  }, 1800);
+};
 
   const chooseSuggestion = (text) => {
     setQuestion(text);
@@ -503,6 +538,24 @@ function InvestigationPage({
       {result && (
 
         <>
+        <section className="evidence-status-card">
+
+  <div>
+    <div className="card-label">
+      EVIDENCE STATUS
+    </div>
+
+    <h3>
+      {result.evidenceStatus}
+    </h3>
+  </div>
+
+  <div className="evidence-count">
+    {result.evidenceCount}
+    <span>relevant documents</span>
+  </div>
+
+</section>
 
           <section className="result-card">
 
@@ -533,7 +586,7 @@ function InvestigationPage({
             <div className="result-footer">
 
               <span>
-                Based on 3 connected sources
+                Based on {result.evidenceCount} connected sources
               </span>
 
               <button
@@ -566,7 +619,7 @@ function InvestigationPage({
               </div>
 
               <span className="source-count">
-                3 SOURCES
+                 {result.evidenceCount} SOURCES
               </span>
 
             </div>
@@ -611,52 +664,192 @@ function InvestigationPage({
           </section>
 
 
-          {/* CONTRADICTION */}
+          {/* EVIDENCE CHECK */}
 
-          <section className="panel">
+{result.type === "contradiction" && (
 
-            <div className="panel-header">
+  <section className="contradiction-card">
 
-              <div>
+    <div className="contradiction-header">
 
-                <div className="card-label">
-                  EVIDENCE CHECK
-                </div>
+      <div className="warning-icon">
+        ⚠
+      </div>
 
-                <h2>
-                  Root cause certainty
-                </h2>
+      <div>
+        <div className="card-label">
+          CONTRADICTION DETECTED
+        </div>
 
-              </div>
+        <h3>
+          Two documents give different instructions
+        </h3>
+      </div>
 
-            </div>
+    </div>
 
-            <div className="evidence-note">
 
-              <div className="note-icon">
-                ?
-              </div>
+    <div className="guidance-grid">
 
-              <div>
+      <div className="guidance-item">
 
-                <strong>
-                  The evidence is suggestive, not conclusive.
-                </strong>
+        <div className="guidance-meta">
+          GUIDE-12 · v1 · Feb 2024
+        </div>
 
-                <p>
-                  The deployment happened shortly before the
-                  incident, but the documents do not prove that
-                  the deployment caused the failure. A previous
-                  incident shows a similar symptom with a
-                  different underlying cause.
-                </p>
+        <p>
+          Restart Service A when latency remains high.
+        </p>
 
-              </div>
+      </div>
 
-            </div>
 
-          </section>
+      <div className="guidance-item newer">
 
+        <div className="guidance-meta">
+          GUIDE-41 · v3 · Aug 2026
+          <span>NEWER</span>
+        </div>
+
+        <p>
+          Do not restart Service A during dependency
+          failures. Check dependency health first.
+        </p>
+
+      </div>
+
+    </div>
+
+
+    <div className="contradiction-note">
+      The documents conflict. Their dates and versions are
+      shown so investigators can see how the guidance changed.
+    </div>
+
+  </section>
+
+)}
+
+
+{result.type === "insufficient" && (
+
+  <section className="incident-match-card">
+
+    <div className="card-label">
+      INCIDENT MATCH
+    </div>
+
+
+    <div className="incident-comparison">
+
+      <div className="incident-item">
+
+        <strong>INC-300</strong>
+
+        <span>
+          Catalog API
+        </span>
+
+        <small>
+          Database saturation
+        </small>
+
+        <b>
+          Different service
+        </b>
+
+      </div>
+
+
+      <div className="incident-item">
+
+        <strong>INC-301</strong>
+
+        <span>
+          Orders API
+        </span>
+
+        <small>
+          Expired certificate
+        </small>
+
+        <b>
+          Different failure mode
+        </b>
+
+      </div>
+
+    </div>
+
+
+    <div className="match-conclusion">
+
+      <span>
+        CONCLUSION
+      </span>
+
+      <p>
+        Not enough evidence to say the exact same failure
+        happened before.
+      </p>
+
+    </div>
+
+  </section>
+
+)}
+
+
+{result.type === "deployment" && (
+
+  <section className="panel">
+
+    <div className="panel-header">
+
+      <div>
+
+        <div className="card-label">
+          EVIDENCE CHECK
+        </div>
+
+        <h2>
+          Root cause certainty
+        </h2>
+
+      </div>
+
+    </div>
+
+
+    <div className="evidence-note">
+
+      <div className="note-icon">
+        ?
+      </div>
+
+      <div>
+
+        <strong>
+          The evidence is suggestive, not conclusive.
+        </strong>
+
+        <p>
+          The deployment happened shortly before the
+          incident, but the documents do not prove that
+          the deployment caused the failure. A previous
+          incident shows a similar symptom with a
+          different underlying cause.
+        </p>
+
+      </div>
+
+    </div>
+
+  </section>
+
+)}
+
+          
         </>
 
       )}
