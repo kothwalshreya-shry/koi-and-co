@@ -8,6 +8,7 @@ const InvestigationState = {
   searches: [],
   findings: [],
   finalReport: null,
+  contradictions: [],
 };
 
 async function searchNode(state) {
@@ -51,7 +52,42 @@ async function searchNode(state) {
     ],
   };
 }
+function detectContradictions(docs) {
+  const contradictions = [];
 
+  const deploymentDocs = docs.filter((d) => d.type === "deployment");
+  const incidentDocs = docs.filter((d) => d.type === "incident");
+
+  for (const incident of incidentDocs) {
+    for (const deployment of deploymentDocs) {
+      if (
+        incident.service &&
+        deployment.service &&
+        incident.service === deployment.service &&
+        incident.version &&
+        deployment.version &&
+        incident.version === deployment.version
+      ) {
+        const incidentText = incident.content.toLowerCase();
+        const deploymentText = deployment.content.toLowerCase();
+
+        if (
+          incidentText.includes("deployment") &&
+          deploymentText.includes("successfully")
+        ) {
+          contradictions.push({
+            type: "deployment_status",
+            description:
+              "The deployment record reports a successful deployment, while the incident record reports an incident shortly after that deployment.",
+            evidence: [deployment.id, incident.id],
+          });
+        }
+      }
+    }
+  }
+
+  return contradictions;
+}
 async function analyzeNode(state) {
   const docs = state.evidence;
 
@@ -99,9 +135,10 @@ async function analyzeNode(state) {
       evidence: historicalIncidents.map((d) => d.id),
     });
   }
-
+ const contradictions = detectContradictions(docs);
   return {
     findings,
+    contradictions,
   };
 }
 
@@ -113,6 +150,7 @@ async function reportNode(state) {
       findings: state.findings,
       evidence: state.evidence.map((doc) => doc.id),
       confidence: state.evidence.length > 0 ? "medium" : "low",
+      contradictions: state.contradictions || [],
     },
   };
 }
