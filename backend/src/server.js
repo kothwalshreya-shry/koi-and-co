@@ -4,7 +4,6 @@ const multer = require("multer");
 const { runInvestigation } = require("./agent");
 const { investigate } = require("./investigation");
 const prisma = require("./db");
-const multer = require("multer");
 const { PDFParse } = require("pdf-parse");
 const mammoth = require("mammoth");
 const upload = multer({
@@ -13,7 +12,7 @@ const upload = multer({
 
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+
 
 app.use(cors());
 app.use(express.json());
