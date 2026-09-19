@@ -1,8 +1,18 @@
 const prisma = require("./db");
 
+const TYPE_WEIGHTS = {
+  incident: 2,
+  postmortem: 2,
+  deployment: 1,
+  troubleshooting: 1,
+  customer_complaint: 1,
+  architecture: 0,
+};
+
 async function searchDocuments(query) {
-  const words = query
-    .toLowerCase()
+  const normalizedQuery = query.toLowerCase().trim();
+
+  const words = normalizedQuery
     .split(/\s+/)
     .filter((word) => word.length > 2);
 
@@ -21,17 +31,30 @@ async function searchDocuments(query) {
       ${doc.content}
     `.toLowerCase();
 
-    let score = 0;
+    let keywordScore = 0;
 
     for (const word of words) {
       if (text.includes(word)) {
-        score++;
+        keywordScore++;
       }
     }
+
+    const exactPhraseMatch =
+      normalizedQuery.length > 0 && text.includes(normalizedQuery);
+
+    const phraseScore = exactPhraseMatch ? 3 : 0;
+    const typeScore = TYPE_WEIGHTS[doc.type] || 0;
+
+    const score = keywordScore + phraseScore + typeScore;
 
     return {
       ...doc,
       score,
+      scoreBreakdown: {
+        keywordScore,
+        phraseScore,
+        typeScore,
+      },
     };
   });
 
@@ -40,5 +63,4 @@ async function searchDocuments(query) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
 }
-
 module.exports = { searchDocuments };

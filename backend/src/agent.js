@@ -40,9 +40,17 @@ async function searchNode(state) {
     ...followUpResults,
   ];
 
-  const uniqueEvidence = Array.from(
-    new Map(allEvidence.map((doc) => [doc.id, doc])).values()
-  );
+  const visitedDocuments = new Set();
+const uniqueEvidence = [];
+
+for (const doc of allEvidence) {
+  if (visitedDocuments.has(doc.id)) {
+    continue;
+  }
+
+  visitedDocuments.add(doc.id);
+  uniqueEvidence.push(doc);
+}
 
   return {
     evidence: uniqueEvidence,
