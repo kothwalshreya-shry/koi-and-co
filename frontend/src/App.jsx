@@ -234,8 +234,71 @@ const [documents, setDocuments] = useState(initialDocuments);
     alert("Upload failed. Check the backend.");
   }
 
-  event.target.value = "";
+   event.target.value = "";
 };
+
+  return (
+    <div className="app">
+
+      <Sidebar
+        page={page}
+        setPage={setPage}
+      />
+
+      <div className="main">
+
+        <Topbar page={page} />
+
+        {page === "investigate" && (
+          <InvestigationPage
+            question={question}
+            setQuestion={setQuestion}
+            investigating={investigating}
+            result={result}
+            startInvestigation={startInvestigation}
+            suggestions={suggestions}
+            chooseSuggestion={chooseSuggestion}
+            setPage={setPage}
+          />
+        )}
+
+        {page === "evidence" && (
+          <DocumentsPage
+            documents={documents}
+            fileInput={fileInput}
+            handleFiles={handleFiles}
+          />
+        )}
+
+        {page === "timeline" && (
+          <TimelinePage />
+        )}
+
+        {page === "overview" && (
+          <OverviewPage
+            documents={documents}
+            setPage={setPage}
+          />
+        )}
+
+      </div>
+
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        hidden
+        accept=".pdf,.doc,.docx,.txt,.md"
+        onChange={handleFiles}
+      />
+
+    </div>
+  );
+}
+
+/* =================================
+   SIDEBAR
+================================= */
 
 /* =================================
    SIDEBAR
@@ -1334,7 +1397,6 @@ function Stat({ label, value, text }) {
   );
 }
 
-
 function Knowledge({ icon, text }) {
   return (
     <div className="knowledge-item">
@@ -1350,6 +1412,4 @@ function Knowledge({ icon, text }) {
     </div>
   );
 }
-}
-
 export default App;
