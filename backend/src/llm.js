@@ -1,38 +1,67 @@
+const { ChatOllama } = require("@langchain/ollama");
+
+const model = new ChatOllama({
+  model: "llama3.2:3b",
+  temperature: 0,
+});
+
 async function generateInvestigationSummary(context) {
   if (!context.evidence.length) {
     return "Insufficient evidence to determine the cause.";
   }
 
-  const rootCause = context.findings.find(
-    (f) => f.type === "root_cause"
-  );
+  const evidenceText = context.evidence
+    .map(
+      (doc) =>
+        `DOCUMENT: ${doc.title}
+TYPE: ${doc.type}
+DATE: ${doc.date}
+CONTENT:
+${doc.content}`
+    )
+    .join("\n\n---\n\n");
 
-  const deployment = context.findings.find(
-    (f) => f.type === "deployment"
-  );
+  const findingsText = context.findings
+    .map((f) => `${f.type}: ${f.conclusion}`)
+    .join("\n");
 
-  const historical = context.findings.find(
-    (f) => f.type === "historical_pattern"
-  );
+  const prompt = `
+You are an incident investigation assistant.
 
-  if (rootCause && deployment && historical) {
-    return (
-      "The Order API latency was associated with the 4.8.0 deployment. " +
-      "The deployment introduced an additional customer-profile lookup, " +
-      "which caused database connection contention and increased latency. " +
-      "A similar customer-profile database access pattern was documented " +
-      "in an earlier Order API incident."
-    );
-  }
+Analyze ONLY the evidence provided below.
 
-  if (rootCause) {
-    return rootCause.conclusion;
-  }
+Question:
+${context.question || "What happened?"}
 
-  return (
-    "Evidence was found, but the available documents do not establish " +
-    "a complete root cause."
-  );
+Existing findings:
+${findingsText}
+
+Evidence:
+${evidenceText}
+
+Rules:
+- Use ONLY facts explicitly stated in the provided evidence.
+- Do not invent technical details, causes, fixes, versions, architecture details, or actions.
+- Every important factual claim must be traceable to one or more document IDs.
+- When stating a cause, mention the supporting document ID.
+- If the evidence does not establish something, say "The available evidence does not establish this."
+- Historical evidence must be clearly described as historical, not as proof of the current incident.
+- Do not use your general knowledge.
+- Keep the answer concise.
+
+Format:
+Summary: <evidence-grounded summary>
+
+Supporting evidence:
+- <document ID>: <what it supports>
+- <document ID>: <what it supports>
+
+Return only the investigation summary.
+`;
+
+  const response = await model.invoke(prompt);
+
+  return response.content;
 }
 
 module.exports = {
