@@ -1,4 +1,4 @@
-import { useEffect,useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 const initialDocuments = [
@@ -92,15 +92,16 @@ function App() {
 
   const [question, setQuestion] = useState("");
 
-  const [documents, setDocuments] = useState(initialDocuments);
-
   const [investigating, setInvestigating] = useState(false);
 
   const [result, setResult] = useState(null);
 
   const fileInput = useRef(null);
 
-  useEffect(() => {
+  const investigationLock = useRef(false);
+const [documents, setDocuments] = useState(initialDocuments);
+
+ useEffect(() => {
   fetch("http://localhost:5000/api/documents")
     .then((response) => response.json())
     .then((data) => {
@@ -119,9 +120,12 @@ function App() {
     });
 }, []);
 
-  const startInvestigation = async () => {
-  if (!question.trim() || investigating) return;
+ const startInvestigation = async () => {
+  if (!question.trim() || investigating || investigationLock.current) {
+    return;
+  }
 
+  investigationLock.current = true;
   setInvestigating(true);
   setResult(null);
 
@@ -142,20 +146,53 @@ function App() {
       throw new Error(data.message || data.error || "Investigation failed");
     }
 
-    setResult(data);
-  } catch (error) {
-    console.error("Investigation failed:", error);
+    const hasContradiction = data.contradictions?.length > 0;
+    const hasHistorical = data.historicalIncidentFound;
+
+    let type = "deployment";
+    let title = "Investigation finding";
+
+    if (data.confidence === "low") {
+      type = "insufficient";
+      title = "Insufficient evidence";
+    } else if (hasContradiction) {
+      type = "contradiction";
+      title = "Contradiction detected";
+    } else if (hasHistorical) {
+      title = "Related incident found";
+    }
 
     setResult({
-      type: "error",
+      type,
+      title,
+      confidence: `${(data.confidence || "unknown").toUpperCase()} CONFIDENCE`,
+      evidenceStatus:
+        data.confidence === "low"
+          ? "Insufficient evidence"
+          : hasContradiction
+            ? "Conflicting evidence"
+            : "Strong evidence",
+      evidenceCount: data.evidence?.length || 0,
+      summary: data.summary,
+      evidence: data.evidence || [],
+      findings: data.findings || [],
+      contradictions: data.contradictions || [],
+    });
+  } catch (error) {
+    console.error(error);
+
+    setResult({
+      type: "insufficient",
       title: "Investigation failed",
-      confidence: "ERROR",
-      evidenceStatus: "Unable to retrieve evidence",
+      confidence: "LOW CONFIDENCE",
+      evidenceStatus: "Unable to investigate",
       evidenceCount: 0,
-      summary: error.message,
+      summary:
+        "Could not connect to the investigation backend. Make sure the backend is running on port 5000.",
     });
   } finally {
     setInvestigating(false);
+    investigationLock.current = false;
   }
 };
 
@@ -166,99 +203,39 @@ function App() {
   const handleFiles = async (event) => {
   const files = Array.from(event.target.files);
 
-  for (const file of files) {
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
+  if (!files.length) return;
 
-      const response = await fetch("http://localhost:5000/api/documents", {
+  const formData = new FormData();
+
+  files.forEach((file) => {
+    formData.append("files", file);
+  });
+
+  try {
+    const response = await fetch(
+      "http://localhost:5000/api/documents/upload",
+      {
         method: "POST",
         body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Upload failed");
       }
+    );
 
-      const newDoc = {
-        id: data.id,
-        name: data.title,
-        type: data.type,
-        date: new Date(data.date).toLocaleDateString(),
-        status: "Indexed",
-      };
+    const data = await response.json();
 
-      setDocuments((prev) => [newDoc, ...prev]);
-    } catch (error) {
-      console.error("Upload failed:", error);
-      alert(`Failed to upload ${file.name}: ${error.message}`);
+    if (!response.ok) {
+      throw new Error(data.message || "Upload failed");
     }
+
+    setDocuments((prev) => [...data.documents, ...prev]);
+
+    alert(`${data.documents.length} document(s) uploaded and indexed.`);
+  } catch (error) {
+    console.error(error);
+    alert("Upload failed. Check the backend.");
   }
 
   event.target.value = "";
 };
-
-  return (
-    <div className="app">
-
-      <Sidebar
-        page={page}
-        setPage={setPage}
-      />
-
-      <div className="main">
-
-        <Topbar page={page} />
-
-        {page === "investigate" && (
-          <InvestigationPage
-            question={question}
-            setQuestion={setQuestion}
-            investigating={investigating}
-            result={result}
-            startInvestigation={startInvestigation}
-            suggestions={suggestions}
-            chooseSuggestion={chooseSuggestion}
-            setPage={setPage}
-          />
-        )}
-
-        {page === "evidence" && (
-          <DocumentsPage
-            documents={documents}
-            fileInput={fileInput}
-            handleFiles={handleFiles}
-          />
-        )}
-
-        {page === "timeline" && (
-          <TimelinePage />
-        )}
-
-        {page === "overview" && (
-          <OverviewPage
-            documents={documents}
-            setPage={setPage}
-          />
-        )}
-
-      </div>
-
-      <input
-        ref={fileInput}
-        type="file"
-        multiple
-        hidden
-        accept=".pdf,.doc,.docx,.txt,.md"
-        onChange={handleFiles}
-      />
-
-    </div>
-  );
-}
-
 
 /* =================================
    SIDEBAR
@@ -655,12 +632,18 @@ function InvestigationPage({
 
             <div className="evidence-grid">
 
-              {evidence.map((item) => (
-                <EvidenceCard
-                  key={item.id}
-                  item={item}
-                />
-              ))}
+             {(result.evidence || []).map((item) => (
+  <EvidenceCard
+    key={item.documentId}
+    item={{
+      id: item.documentId,
+      type: item.type?.replace("_", " ").toUpperCase(),
+      title: item.title,
+      description: "Retrieved from the investigation knowledge base.",
+      date: new Date(item.date).toLocaleDateString(),
+    }}
+  />
+))}
 
             </div>
 
@@ -687,15 +670,13 @@ function InvestigationPage({
 
             </div>
 
-            <MiniTimeline />
-
+            <MiniTimeline events={result.evidence || []} />
           </section>
 
 
           {/* EVIDENCE CHECK */}
 
 {result.type === "contradiction" && (
-
   <section className="contradiction-card">
 
     <div className="contradiction-header">
@@ -710,54 +691,60 @@ function InvestigationPage({
         </div>
 
         <h3>
-          Two documents give different instructions
+          Conflicting evidence was found
         </h3>
       </div>
 
     </div>
 
+    {(result.contradictions || []).map((contradiction, index) => {
 
-    <div className="guidance-grid">
+      const contradictionDocs = (contradiction.evidence || [])
+        .map((id) =>
+          (result.evidence || []).find(
+            (doc) => doc.documentId === id
+          )
+        )
+        .filter(Boolean);
 
-      <div className="guidance-item">
+      return (
+        <div key={index} className="guidance-grid">
 
-        <div className="guidance-meta">
-          GUIDE-12 · v1 · Feb 2024
+          {contradictionDocs.map((doc) => (
+            <div
+              key={doc.documentId}
+              className="guidance-item"
+            >
+
+              <div className="guidance-meta">
+                {doc.documentId}
+                {doc.version ? ` · ${doc.version}` : ""}
+              </div>
+
+              <p>
+                {doc.title}
+              </p>
+
+              <small>
+                {doc.type?.replace("_", " ").toUpperCase()}
+                {" · "}
+                {new Date(doc.date).toLocaleDateString()}
+              </small>
+
+            </div>
+          ))}
+
+          <div className="contradiction-note">
+            {contradiction.description}
+          </div>
+
         </div>
+      );
 
-        <p>
-          Restart Service A when latency remains high.
-        </p>
-
-      </div>
-
-
-      <div className="guidance-item newer">
-
-        <div className="guidance-meta">
-          GUIDE-41 · v3 · Aug 2026
-          <span>NEWER</span>
-        </div>
-
-        <p>
-          Do not restart Service A during dependency
-          failures. Check dependency health first.
-        </p>
-
-      </div>
-
-    </div>
-
-
-    <div className="contradiction-note">
-      The documents conflict. Their dates and versions are
-      shown so investigators can see how the guidance changed.
-    </div>
+    })}
 
   </section>
-
 )}
-
 
 {result.type === "insufficient" && (
 
@@ -1201,6 +1188,19 @@ function OverviewPage({ documents, setPage }) {
 ================================= */
 
 function TimelinePage() {
+  const [timelineDocuments, setTimelineDocuments] = useState([]);
+
+  useEffect(() => {
+    fetch("http://localhost:5000/api/documents")
+      .then((response) => response.json())
+      .then((data) => {
+        setTimelineDocuments(data);
+      })
+      .catch((error) => {
+        console.error("Failed to load timeline documents:", error);
+      });
+  }, []);
+
   return (
     <main className="content">
 
@@ -1220,10 +1220,9 @@ function TimelinePage() {
 
       </div>
 
-
       <section className="panel">
 
-        <MiniTimeline />
+        <MiniTimeline events={timelineDocuments} />
 
       </section>
 
@@ -1273,48 +1272,47 @@ function EvidenceCard({ item }) {
 }
 
 
-function MiniTimeline() {
+function MiniTimeline({ events = [] }) {
   return (
     <div className="timeline">
+      {[...events]
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .map((event, index) => (
+          <div
+            className="timeline-event"
+            key={event.documentId || index}
+          >
+            <div className="timeline-time">
+              <strong>
+                {new Date(event.date).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </strong>
 
-      {timeline.map((event, index) => (
+              <span>
+                {new Date(event.date).toLocaleDateString()}
+              </span>
+            </div>
 
-        <div
-          className="timeline-event"
-          key={index}
-        >
+            <div className="timeline-line">
+              <span></span>
+            </div>
 
-          <div className="timeline-time">
-            <strong>{event.time}</strong>
-            <span>{event.date}</span>
+            <div className="timeline-info">
+              <small>
+                {event.type?.toUpperCase()}
+              </small>
+
+              <strong>
+                {event.title}
+              </strong>
+            </div>
           </div>
-
-          <div className="timeline-line">
-
-            <span></span>
-
-          </div>
-
-          <div className="timeline-info">
-
-            <small>
-              {event.type}
-            </small>
-
-            <strong>
-              {event.title}
-            </strong>
-
-          </div>
-
-        </div>
-
-      ))}
-
+        ))}
     </div>
   );
 }
-
 
 function Stat({ label, value, text }) {
   return (
@@ -1352,18 +1350,6 @@ function Knowledge({ icon, text }) {
     </div>
   );
 }
-
-
-function getDocumentType(filename) {
-  const name = filename.toLowerCase();
-
-  if (name.includes("incident")) return "Incident Report";
-  if (name.includes("deploy")) return "Deployment Note";
-  if (name.includes("postmort")) return "Postmortem";
-  if (name.includes("guide")) return "Troubleshooting";
-  if (name.includes("architecture")) return "Architecture";
-
-  return "Organization Document";
 }
 
 export default App;

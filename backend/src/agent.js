@@ -144,6 +144,25 @@ if (historicalIncidents.length > 0) {
 }
 
 async function reportNode(state) {
+    const evidence = state.evidence || [];
+  const findings = state.findings || [];
+  const contradictions = state.contradictions || [];
+
+  if (evidence.length === 0) {
+    return {
+      finalReport: {
+        type: "insufficient_evidence",
+        summary:
+          "There is not enough evidence in the investigation knowledge base to answer this question reliably.",
+        findings: [],
+        evidence: [],
+        contradictions: [],
+        historicalIncidentFound: false,
+        confidence: "low",
+      },
+    };
+  }
+  
   const hasEvidence = state.evidence.length > 0;
 
   const hasRootCause = state.findings.some(
@@ -195,6 +214,7 @@ const graph = new StateGraph({
 const investigationGraph = graph.compile();
 
 async function runInvestigation(question) {
+  console.log("INVESTIGATION QUESTION:", question);
   return investigationGraph.invoke({
     question,
     evidence: [],
